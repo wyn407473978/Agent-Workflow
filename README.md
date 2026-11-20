@@ -41,7 +41,9 @@ go run ./cmd/llm-check
 
 ## 单节点工作流测试
 
-初始化 PostgreSQL 并配置 `PG_PASSWORD` 和 `DS_API_KEY` 后，从仓库根目录运行以下两轮对话。`test_chat` 是唯一的 Go-Eino 节点，通过 DeepSeek 回答消息。
+初始化 PostgreSQL 并配置 `PG_PASSWORD` 和 `DS_API_KEY` 后，运行 `go run ./cmd/api`，打开 [对话测试页](http://127.0.0.1:8080/chat)。页面支持流式回复、停止接收、按原请求重试和在刷新后继续当前会话。侧栏显示会话、工作流、请求和事件标识。测试页通过本机回环地址访问。
+
+`test_chat` 是唯一的 Go-Eino 节点，通过 DeepSeek 回答消息。也可以从仓库根目录运行以下两轮命令行对话。
 
 ```sh
 SESSION_ID=$(uuidgen)
@@ -51,7 +53,7 @@ go run ./cmd/workflow-test -session "$SESSION_ID" -request turn-2 -message '我�
 
 每轮会从 PostgreSQL 加载该会话最近 10 轮成功的消息和回复。测试命令分别运行时仍可继续原会话。使用相同的 `-session`、`-request` 和消息重试，已完成的请求直接返回落库的回复。模型调用失败会保存待重试状态，复用同一请求标识即可再试。
 
-会话、工作流实例、事件、状态迁移和节点执行都使用现有数据表。测试入口通过命令行调用，输出包含会话、请求、事件和工作流标识。
+会话、工作流实例、事件、状态迁移和节点执行都使用现有数据表。命令行输出包含会话、请求、事件和工作流标识。
 
 ### 流式对话
 
