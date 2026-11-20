@@ -70,3 +70,29 @@ func TestLoadDatabaseCredentialAliases(t *testing.T) {
 		}
 	})
 }
+
+func TestLoadDeepSeekEnvironment(t *testing.T) {
+	t.Chdir("../..")
+	t.Setenv("APP_CONFIG_FILE", "")
+	t.Setenv("DS_BASE_URL", "")
+	t.Setenv("DS_MODEL", "")
+	t.Setenv("DS_API_KEY", "test-key")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DeepSeek.BaseURL != "https://api.deepseek.com" || cfg.DeepSeek.Model != "deepseek-flash" || cfg.DeepSeek.APIKey != "test-key" {
+		t.Fatal("expected DeepSeek YAML defaults and the environment key")
+	}
+
+	t.Setenv("DS_BASE_URL", "https://gateway.example/v1")
+	t.Setenv("DS_MODEL", "deepseek-v4-pro")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.DeepSeek.BaseURL != "https://gateway.example/v1" || cfg.DeepSeek.Model != "deepseek-v4-pro" {
+		t.Fatal("expected DeepSeek environment settings to override YAML")
+	}
+}

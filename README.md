@@ -27,6 +27,18 @@ go run ./cmd/api
 
 配置优先级从高到低依次是环境变量、`APP_CONFIG_FILE` 指定的 YAML、`configs/config.yaml`。可用 `HTTP_ADDR`、`PG_IP`、`PG_PORT`、`PG_DATABASE`、`PG_USER`、`PG_PASSWORD` 和 `PG_SSLMODE` 覆盖对应字段。也兼容同时设置 `USER` 和 `PASSWROD` 的启动方式。
 
+## DeepSeek 模型
+
+在终端设置 `DS_API_KEY`。`DS_BASE_URL` 和 `DS_MODEL` 可覆盖 `configs/config.yaml` 中的模型地址和名称，默认使用 `https://api.deepseek.com` 上的 `deepseek-flash`，关闭思考模式。
+
+```sh
+export DS_API_KEY='<你的 DeepSeek API Key>'
+export DS_BASE_URL='https://api.deepseek.com'
+go run ./cmd/llm-check
+```
+
+检查命令发送一条短消息并打印回复，可以单独运行。Go-Eino 节点可通过 `llm.NewDeepSeek(ctx, cfg.DeepSeek)` 获取模型组件。
+
 ## PostgreSQL 仓储
 
 用 `postgres.NewStore(db)` 从 GORM 连接创建仓储。单表查询可以直接调用，写入通过 `store.Transaction(ctx, func(tx *postgres.Tx) error { ... })` 执行。在回调里返回错误可回滚整组写入。

@@ -12,6 +12,7 @@ import (
 type Config struct {
 	HTTPAddr string
 	Postgres Postgres
+	DeepSeek DeepSeek
 }
 
 type Postgres struct {
@@ -21,6 +22,12 @@ type Postgres struct {
 	User     string
 	Password string
 	SSLMode  string
+}
+
+type DeepSeek struct {
+	APIKey  string `json:"-"`
+	BaseURL string
+	Model   string
 }
 
 func Load() (Config, error) {
@@ -51,6 +58,9 @@ func Load() (Config, error) {
 		userBinding,
 		{"postgres.password", "PG_PASSWORD", "PASSWROD"},
 		{"postgres.sslmode", "PG_SSLMODE"},
+		{"deepseek.api_key", "DS_API_KEY"},
+		{"deepseek.base_url", "DS_BASE_URL"},
+		{"deepseek.model", "DS_MODEL"},
 	} {
 		if err := v.BindEnv(binding...); err != nil {
 			return Config{}, fmt.Errorf("bind %s: %w", binding[0], err)
@@ -71,6 +81,11 @@ func Load() (Config, error) {
 			User:     v.GetString("postgres.user"),
 			Password: v.GetString("postgres.password"),
 			SSLMode:  v.GetString("postgres.sslmode"),
+		},
+		DeepSeek: DeepSeek{
+			APIKey:  v.GetString("deepseek.api_key"),
+			BaseURL: v.GetString("deepseek.base_url"),
+			Model:   v.GetString("deepseek.model"),
 		},
 	}
 
