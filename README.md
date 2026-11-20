@@ -39,6 +39,20 @@ go run ./cmd/llm-check
 
 检查命令发送一条短消息并打印回复，可以单独运行。Go-Eino 节点可通过 `llm.NewDeepSeek(ctx, cfg.DeepSeek)` 获取模型组件。
 
+## 单节点工作流测试
+
+初始化 PostgreSQL 并配置 `PG_PASSWORD` 和 `DS_API_KEY` 后，从仓库根目录运行以下两轮对话。`test_chat` 是唯一的 Go-Eino 节点，通过 DeepSeek 回答消息。
+
+```sh
+SESSION_ID=$(uuidgen)
+go run ./cmd/workflow-test -session "$SESSION_ID" -request turn-1 -message '请记住我的代号是青松，只回复收到。'
+go run ./cmd/workflow-test -session "$SESSION_ID" -request turn-2 -message '我的代号是什么？'
+```
+
+每轮会从 PostgreSQL 加载该会话最近 10 轮成功的消息和回复。测试命令分别运行时仍可继续原会话。使用相同的 `-session`、`-request` 和消息重试，已完成的请求直接返回落库的回复。模型调用失败会保存待重试状态，复用同一请求标识即可再试。
+
+会话、工作流实例、事件、状态迁移和节点执行都使用现有数据表。测试入口通过命令行调用，输出包含会话、请求、事件和工作流标识。
+
 ## PostgreSQL 仓储
 
 用 `postgres.NewStore(db)` 从 GORM 连接创建仓储。单表查询可以直接调用，写入通过 `store.Transaction(ctx, func(tx *postgres.Tx) error { ... })` 执行。在回调里返回错误可回滚整组写入。
