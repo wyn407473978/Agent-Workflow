@@ -53,6 +53,16 @@ go run ./cmd/workflow-test -session "$SESSION_ID" -request turn-2 -message '我�
 
 会话、工作流实例、事件、状态迁移和节点执行都使用现有数据表。测试入口通过命令行调用，输出包含会话、请求、事件和工作流标识。
 
+### 流式对话
+
+添加 `-stream` 后，测试节点会逐行输出 JSON。`delta` 事件携带文本分片，`done` 事件在完整回复落库后携带回合结果。中断时会输出 `error`，已输出的分片不进入会话记忆。已完成的请求重发时，保存的回复会作为一个 `delta` 返回，再输出 `done`。
+
+```sh
+go run ./cmd/workflow-test -stream -session "$SESSION_ID" -request turn-3 -message '用一句话介绍青松。'
+```
+
+主工作流可以复用 `workflow.NewChatNode` 注册模型节点，用 `workflow.ConsumeChatStream` 将模型分片转发给输出端并汇总最终回复。
+
 ## PostgreSQL 仓储
 
 用 `postgres.NewStore(db)` 从 GORM 连接创建仓储。单表查询可以直接调用，写入通过 `store.Transaction(ctx, func(tx *postgres.Tx) error { ... })` 执行。在回调里返回错误可回滚整组写入。

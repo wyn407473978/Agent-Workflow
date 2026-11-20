@@ -23,6 +23,7 @@ const (
 	testVersion       = "test-v1"
 	testOwner         = "local-workflow-test"
 	testMemoryTurns   = 10
+	testModelTimeout  = 30 * time.Second
 	testLeaseDuration = 60 * time.Second
 )
 
@@ -33,7 +34,7 @@ var (
 
 type TestWorkflow struct {
 	store     *postgres.Store
-	chain     compose.Runnable[[]*schema.Message, string]
+	chain     compose.Runnable[[]*schema.Message, *schema.Message]
 	modelName string
 }
 
@@ -52,9 +53,12 @@ type TestTurnResult struct {
 
 // NewTestWorkflow 构建只有一个模型节点的工作流。会话和数据库操作由调用流程处理。
 func NewTestWorkflow(ctx context.Context, store *postgres.Store, chat model.BaseChatModel, modelName string) (*TestWorkflow, error) {
-	node := testChatNode{chat: chat}
-	chain, err := compose.NewChain[[]*schema.Message, string]().
-		AppendLambda(compose.InvokableLambda(node.invoke), compose.WithNodeKey(testChatNodeName)).Compile(ctx, compose.WithGraphName(testVersion))
+	node, err := newTestChatNode(chat)
+	if err != nil {
+		return nil, err
+	}
+	chain, err := compose.NewChain[[]*schema.Message, *schema.Message]().
+		AppendLambda(node, compose.WithNodeKey(testChatNodeName)).Compile(ctx, compose.WithGraphName(testVersion))
 	if err != nil {
 		return nil, fmt.Errorf("compile test workflow: %w", err)
 	}
@@ -63,6 +67,33 @@ func NewTestWorkflow(ctx context.Context, store *postgres.Store, chat model.Base
 
 // Run 处理一轮测试对话。相同会话和请求标识复用已保存的成功结果。
 func (w *TestWorkflow) Run(ctx context.Context, input TestTurnInput) (TestTurnResult, error) {
+	return w.run(ctx, input, w.invokeChat, nil)
+}
+
+// Stream 逐块发送本轮回复，并在完整回复落库后返回回合结果。
+// 已完成的重发只发送一次已保存的完整文本。传入 nil 捕获最终结果但不转发分片。
+func (w *TestWorkflow) Stream(ctx context.Context, input TestTurnInput, emit TextDeltaSink) (TestTurnResult, error) {
+	return w.run(ctx, input, func(ctx context.Context, messages []*schema.Message) (string, error) {
+		reader, err := w.chain.Stream(ctx, messages)
+		if err != nil {
+			return "", err
+		}
+		return ConsumeChatStream(ctx, reader, emit)
+	}, emit)
+}
+
+func (w *TestWorkflow) invokeChat(ctx context.Context, messages []*schema.Message) (string, error) {
+	reply, err := w.chain.Invoke(ctx, messages)
+	if err != nil {
+		return "", err
+	}
+	if reply == nil || strings.TrimSpace(reply.Content) == "" {
+		return "", errors.New("test chat model returned no text")
+	}
+	return strings.TrimSpace(reply.Content), nil
+}
+
+func (w *TestWorkflow) run(ctx context.Context, input TestTurnInput, respond func(context.Context, []*schema.Message) (string, error), emitReplay TextDeltaSink) (TestTurnResult, error) {
 	var sessionID pgtype.UUID
 	if input.SessionID == "" {
 		sessionID = newTestUUID()
@@ -91,23 +122,33 @@ func (w *TestWorkflow) Run(ctx context.Context, input TestTurnInput) (TestTurnRe
 	result.EventID = domain.EventID(turn.event.EventID.String())
 	if turn.replay != nil {
 		result.RoundResult = *turn.replay
-		return result, nil
+		return result, writeTextDelta(emitReplay, turn.replay.Reply.Text)
 	}
 
 	messages := append(turn.history, schema.UserMessage(message))
-	text, modelErr := w.chain.Invoke(ctx, messages)
-	if modelErr != nil {
+	modelCtx, cancel := context.WithTimeout(ctx, testModelTimeout)
+	text, responseErr := respond(modelCtx, messages)
+	cancel()
+	var failureCode string
+	if responseErr != nil {
 		text = ""
+		failureCode = "TEST_MODEL_ERROR"
+		if errors.Is(responseErr, ErrChatDeltaDelivery) {
+			failureCode = "TEST_STREAM_DELIVERY_ERROR"
+		}
 	}
 
 	// 客户端断开后仍结束数据库记录，重发时可以读取已提交的结果或重试。
 	finishCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer stop()
-	result.RoundResult, err = w.finishTurn(finishCtx, sessionID, key, turn, text)
+	result.RoundResult, err = w.finishTurn(finishCtx, sessionID, key, turn, text, failureCode)
 	if err != nil {
 		return result, err
 	}
-	if text == "" {
+	if errors.Is(responseErr, ErrChatDeltaDelivery) {
+		return result, responseErr
+	}
+	if responseErr != nil {
 		return result, ErrTestModelFailed
 	}
 	return result, nil

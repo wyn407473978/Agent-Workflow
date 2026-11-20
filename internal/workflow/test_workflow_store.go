@@ -113,7 +113,7 @@ func (w *TestWorkflow) beginTurn(ctx context.Context, sessionID pgtype.UUID, key
 	return turn, err
 }
 
-func (w *TestWorkflow) finishTurn(ctx context.Context, sessionID pgtype.UUID, key postgres.EventKey, turn testTurn, reply string) (RoundResult, error) {
+func (w *TestWorkflow) finishTurn(ctx context.Context, sessionID pgtype.UUID, key postgres.EventKey, turn testTurn, reply, failureCode string) (RoundResult, error) {
 	at := time.Now().UTC()
 	status := domain.WorkflowWaitingInput
 	result := RoundResult{
@@ -122,11 +122,11 @@ func (w *TestWorkflow) finishTurn(ctx context.Context, sessionID pgtype.UUID, ke
 	}
 	nodeStatus, reason := "SUCCEEDED", "TEST_TURN_REPLIED"
 	var errorCode *string
-	if reply != "" {
+	if failureCode == "" {
 		result.Reply = &UserReply{Text: reply, Status: status}
 		result.Checkpoint.CompletedNodes = []domain.NodeName{testChatNodeName}
 	} else {
-		errorCode = new("TEST_MODEL_ERROR")
+		errorCode = &failureCode
 		nodeStatus, reason = "FAILED", "TEST_TURN_FAILED"
 		result.EventStatus = domain.EventRetryWait
 		result.Error = &domain.WorkflowError{Code: domain.ErrorCode(*errorCode), Retryable: true}
