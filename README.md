@@ -27,6 +27,14 @@ go run ./cmd/api
 
 配置优先级从高到低依次是环境变量、`APP_CONFIG_FILE` 指定的 YAML、`configs/config.yaml`。可用 `HTTP_ADDR`、`PG_IP`、`PG_PORT`、`PG_DATABASE`、`PG_USER`、`PG_PASSWORD` 和 `PG_SSLMODE` 覆盖对应字段。也兼容同时设置 `USER` 和 `PASSWROD` 的启动方式。
 
+## PostgreSQL 仓储
+
+用 `postgres.NewStore(db)` 从 GORM 连接创建仓储。单表查询可以直接调用，写入通过 `store.Transaction(ctx, func(tx *postgres.Tx) error { ... })` 执行。在回调里返回错误可回滚整组写入。
+
+涉及读后写的跨表操作，先按会话、事件、工作流、创建操作、活动的顺序取逻辑锁，再读取并校验当前状态。同一类有多个键时，将键一起传给对应的 `Lock...` 方法。Worker 扫描候选任务后，应在事务里重新认领，再到事务外执行实际任务。
+
+运行仓储集成测试时，将 `AGENT_WORKFLOW_TEST_DSN` 指向已执行初始化 SQL 的独立测试库，再运行 `go test ./tests/integration`。
+
 ## 项目目录
 
 ```text
