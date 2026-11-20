@@ -1,0 +1,10 @@
+http:
+  addr: '127.0.0.1:8080'
+
+postgres:
+  host: '127.0.0.1'
+  port: 55432
+  database: agent-workflow
+  user: ai_user
+  password: '' # Set PG_PASSWORD in the environment.
+  sslmode: disable
